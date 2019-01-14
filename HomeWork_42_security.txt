@@ -1,0 +1,141 @@
+--1.
+--receives username and creates new db user with random 8 digit password
+--with same permissions as other user
+--68050012
+use eDate
+
+alter proc create_NewDBUser 
+           @username sysname, @newUsername sysname
+as
+begin
+    declare @password sysname,
+	@exec_stmt	nvarchar(4000),
+	@stmtS1	nvarchar(4000),
+	@stmtS2	nvarchar(4000)	
+	set @password = concat(
+						   round(RAND()*9,0),round(RAND()*9,0),round(RAND()*9,0),
+						   round(RAND()*9,0),round(RAND()*9,0),round(RAND()*9,0),
+						   round(RAND()*9,0),round(RAND()*9,0)
+						   )
+	--create instance user
+	--CREATE LOGIN @newUsername WITH PASSWORD = @password; 
+	set @exec_stmt = 'CREATE LOGIN ' + quotename(@newUsername,']') +
+			' with password = ' + quotename(@password, '''') 
+	print @exec_stmt
+	exec (@exec_stmt)
+
+	--CREATE USER @newUsername FOR LOGIN @newUsername					  
+	select @stmtS1 = 'CREATE USER '
+	select @stmtS1 = @stmtS1 +  quotename(@newUsername,']')
+	select @stmtS1 = @stmtS1 + ' FOR LOGIN '
+	select @stmtS1 = @stmtS1 + quotename(@newUsername,']')
+	print @stmtS1
+	exec (@stmtS1)
+
+	--grant impersonate on user ::@username to @newUsername
+	select @stmtS2 = 'grant impersonate on user ::'
+	select @stmtS2 = @stmtS2 +  quotename(@username,']')
+	select @stmtS2 = @stmtS2 + ' to '
+	select @stmtS2 = @stmtS2+ quotename(@newUsername,']')
+	print @stmtS2
+	exec (@stmtS2)
+
+	print 'password for username: '
+	print @newUsername
+	print' is: '
+	print @password
+end 
+
+exec create_NewDBUser 'dbo', 'Avi'
+
+
+--2. create new user and restrict access to specific table
+--grant access to partial view
+CREATE USER Avi2 FOR LOGIN Mirror
+use [eDate]
+DENY ALTER ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY CONTROL ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY DELETE ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY INSERT ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY REFERENCES ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY SELECT ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY TAKE OWNERSHIP ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY UPDATE ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY VIEW CHANGE TRACKING ON [Lists].[Genders] TO [Avi2]
+use [eDate]
+DENY VIEW DEFINITION ON [Lists].[Genders] TO [Avi2]
+GO
+
+--grant access to partial view
+GRANT SELECT ON [Operation].[MemberSessionsView_vw] ([MemberId]) TO [Avi2]
+GO
+GRANT SELECT ON [Operation].[MemberSessionsView_vw] ([id]) TO [Avi2]
+GO
+
+--3. create user in AD create a proxy so you can run a DB backup job
+--run the job with the created user
+
+--4. simulate a lost SA
+
+--5.new sql server login 'Bob' default db=edate
+USE [master]
+GO
+CREATE LOGIN [Bob] WITH PASSWORD=N'12345qaz' MUST_CHANGE, 
+DEFAULT_DATABASE=[Northwind], CHECK_EXPIRATION=ON, CHECK_POLICY=ON
+GO
+--6. new edate db user 'Bob' assosiated with 'Bob' login
+USE [Northwind]
+GO
+CREATE USER [Bob] FOR LOGIN [Bob]
+GO
+
+--changing experation password = off
+
+ALTER LOGIN [Bob] WITH PASSWORD = '12345qaz'
+GO
+ALTER LOGIN [Bob] WITH
+      CHECK_POLICY = OFF,
+      CHECK_EXPIRATION = OFF;
+
+--7. connect to Bob
+--Login failed for user 'Bob'. Reason: 
+--An attempt to login using SQL authentication failed. 
+--Server is configured for Integrated authentication only. [CLIENT: <local machine>]
+
+--8.changed to mixed mode and restarted
+--9. coonetion via bob
+--10. cannot select
+--11.
+use [Northwind]
+create ROLE [Bobs]
+GO
+use [Northwind]
+go
+GRANT SELECT, INSERT, UPDATE, DELETE ON DATABASE::[Northwind] TO Bobs
+
+--12.
+USE [Northwind]
+GO
+ALTER AUTHORIZATION ON SCHEMA::[dbo] TO [Bobs]
+GO
+USE [Northwind]
+GO
+ALTER ROLE [Bobs] ADD MEMBER [Bob]
+GO
+--13. can select
+--14. deny select
+use [Northwind]
+GO
+DENY SELECT ON [dbo].[Customers] TO [Bob]
+GO
+
+--15. The SELECT permission was denied on the object 'Customers', 
+--database 'Northwind', schema 'dbo'.
